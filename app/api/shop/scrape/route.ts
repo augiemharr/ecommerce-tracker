@@ -68,6 +68,22 @@ async function runScrape() {
   let soldThisScrape = 0;
   let soldRevenueThisScrape = 0;
 
+  const pendingToMigrate = prevData?.pending_sold || [];
+  for (const pending of pendingToMigrate) {
+    const alreadySold = confirmedSold.some((s) => s.id === pending.id);
+    if (!alreadySold) {
+      confirmedSold.push({
+        id: pending.id,
+        name: pending.name,
+        price: pending.price,
+        currency: pending.currency || 'NZD',
+        image_url: pending.image_url,
+        product_url: pending.product_url,
+        detected_at: pending.first_seen_missing,
+      });
+    }
+  }
+
   if (prevData && prevData.products.length > 0) {
     for (const prevProduct of prevData.products) {
       if (!scrapedIds.has(prevProduct.id)) {

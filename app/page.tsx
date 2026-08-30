@@ -205,7 +205,7 @@ export default function Dashboard() {
             </div>
 
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-              <h2 className="text-sm font-semibold text-gray-400 mb-4">Items Sold &amp; New per Scrape</h2>
+              <h2 className="text-sm font-semibold text-gray-400 mb-4">Items Sold per Day</h2>
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData}>

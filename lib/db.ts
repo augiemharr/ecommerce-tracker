@@ -40,6 +40,7 @@ export interface ShopData {
   revenue_history: HistoryEntry[];
   sold_items: SoldItem[];
   new_items: { name: string; price: number; added_at: string }[];
+  pending_sold?: { id: string; name: string; price: number; currency: string; image_url: string | null; product_url: string; first_seen_missing: string }[];
 }
 
 function getRedis(): Redis | null {
