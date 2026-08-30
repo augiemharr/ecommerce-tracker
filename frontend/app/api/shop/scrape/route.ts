@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getShopData, saveShopData, ShopData, SoldItem, PendingSoldItem } from '@/lib/db';
+import { getShopData, saveShopData, ShopData, SoldItem } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,74 +55,6 @@ async function scrapeAll(): Promise<ScrapedProduct[]> {
   return products;
 }
 
-interface VerificationResult {
-  confirmed: boolean;
-  method: '404' | 'content_check' | 'combined' | 'failed';
-  confidence: number;
-}
-
-const SOLD_OUT_INDICATORS = [
-  'sold out',
-  'out of stock',
-  'unavailable',
-  'no longer available',
-  'this product is no longer',
-  'has been removed',
-  'does not exist',
-  'page not found',
-];
-
-const RETRY_DELAY_MS = 2000;
-const MAX_RETRIES = 2;
-const REQUIRED_MISSING_SCRAPES = 3;
-
-async function verifyUrl(url: string, retries = MAX_RETRIES): Promise<VerificationResult> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      const resp = await fetch(url, {
-        method: 'GET',
-        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36' },
-        redirect: 'follow',
-        signal: AbortSignal.timeout(8000),
-      });
-
-      if (resp.status === 404) {
-        return { confirmed: true, method: '404', confidence: 0.95 };
-      }
-
-      if (resp.ok) {
-        const html = await resp.text();
-        const lowerHtml = html.toLowerCase();
-        const hasSoldOutIndicator = SOLD_OUT_INDICATORS.some(indicator => lowerHtml.includes(indicator));
-        
-        if (hasSoldOutIndicator) {
-          return { confirmed: true, method: 'content_check', confidence: 0.85 };
-        }
-
-        const isHomepage = lowerHtml.includes('<title>miss anne') || lowerHtml.includes('class="homepage"');
-        if (isHomepage) {
-          return { confirmed: true, method: 'content_check', confidence: 0.7 };
-        }
-      }
-
-      if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
-        continue;
-      }
-
-      return { confirmed: false, method: 'failed', confidence: 0 };
-    } catch {
-      if (attempt < retries) {
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * (attempt + 1)));
-        continue;
-      }
-      return { confirmed: false, method: 'failed', confidence: 0 };
-    }
-  }
-
-  return { confirmed: false, method: 'failed', confidence: 0 };
-}
-
 async function runScrape() {
   const scraped = await scrapeAll();
   const prevData = await getShopData();
@@ -131,85 +63,31 @@ async function runScrape() {
   const scrapedIds = new Set(scraped.map((p) => p.id));
   const prevIds = new Set((prevData?.products || []).map((p) => p.id));
 
-  const prevPending = prevData?.pending_sold || [];
   const prevSold = prevData?.sold_items || [];
-
   const confirmedSold: SoldItem[] = [...prevSold];
   let soldThisScrape = 0;
   let soldRevenueThisScrape = 0;
 
-  const stillPending: PendingSoldItem[] = [];
-
-  for (const pending of prevPending) {
-    if (scrapedIds.has(pending.id)) {
-      continue;
-    }
-
-    const newMissingCount = (pending.missing_count || 1) + 1;
-    const now = new Date().toISOString();
-
-    if (newMissingCount >= REQUIRED_MISSING_SCRAPES) {
-      const verification = await verifyUrl(pending.product_url);
-      
-      if (verification.confirmed) {
-        confirmedSold.push({
-          id: pending.id,
-          name: pending.name,
-          price: pending.price,
-          currency: pending.currency,
-          image_url: pending.image_url,
-          product_url: pending.product_url,
-          first_seen_missing: pending.first_seen_missing,
-          confirmed_at: now,
-          missing_count: newMissingCount,
-          confirmation_method: verification.method as '404' | 'content_check' | 'combined',
-        });
-        soldThisScrape++;
-        soldRevenueThisScrape += pending.price;
-        continue;
-      } else {
-        stillPending.push({
-          ...pending,
-          missing_count: newMissingCount,
-          last_checked: now,
-          verification_status: newMissingCount >= REQUIRED_MISSING_SCRAPES + 2 ? 'failed' : 'retry',
-        });
-      }
-    } else {
-      stillPending.push({
-        ...pending,
-        missing_count: newMissingCount,
-        last_checked: now,
-        verification_status: 'pending',
-      });
-    }
-  }
-
-  const newlyMissing: PendingSoldItem[] = [];
   if (prevData && prevData.products.length > 0) {
     for (const prevProduct of prevData.products) {
       if (!scrapedIds.has(prevProduct.id)) {
         const alreadySold = confirmedSold.some((s) => s.id === prevProduct.id);
-        const alreadyPending = prevPending.some((p) => p.id === prevProduct.id) || stillPending.some((p) => p.id === prevProduct.id);
-        if (!alreadySold && !alreadyPending) {
-          newlyMissing.push({
+        if (!alreadySold) {
+          confirmedSold.push({
             id: prevProduct.id,
             name: prevProduct.name,
             price: prevProduct.price,
             currency: prevProduct.currency || 'NZD',
             image_url: prevProduct.image_url,
             product_url: prevProduct.product_url,
-            first_seen_missing: now,
-            missing_count: 1,
-            last_checked: null,
-            verification_status: 'pending',
+            detected_at: now,
           });
+          soldThisScrape++;
+          soldRevenueThisScrape += prevProduct.price;
         }
       }
     }
   }
-
-  const allPending = [...stillPending, ...newlyMissing];
 
   const newItems = scraped
     .filter((p) => !prevIds.has(p.id))
@@ -242,7 +120,6 @@ async function runScrape() {
     last_scraped: now,
     revenue_history: history.slice(-90),
     sold_items: confirmedSold.slice(-200),
-    pending_sold: allPending.slice(-50),
     new_items: [...(prevData?.new_items || []), ...newItems].slice(-100),
   };
 
@@ -253,7 +130,6 @@ async function runScrape() {
     sold_this_scrape: soldThisScrape,
     new_this_scrape: newItems.length,
     total_sold: confirmedSold.length,
-    pending_sold: allPending.length,
     revenue: totalSoldRevenue,
   };
 }
