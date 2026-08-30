@@ -2,6 +2,33 @@
 
 Track competitor e-commerce websites - monitor products, pricing, and estimate revenue.
 
+## Deploy to Vercel
+
+1. **Push to GitHub**:
+   ```bash
+   cd ecommerce-tracker/frontend
+   git init
+   git add .
+   git commit -m "Initial commit"
+   ```
+
+2. **Go to [vercel.com](https://vercel.com)** and sign up/log in
+
+3. **Import your GitHub repo**:
+   - Click "New Project"
+   - Select your repo
+   - Root Directory: `frontend`
+   - Framework Preset: Next.js
+   - Click Deploy
+
+4. **Done!** Your app will be live at `https://your-project.vercel.app`
+
+## How It Works
+
+- **Frontend**: Next.js dashboard on Vercel
+- **Backend**: Python serverless functions in `/api/` directory
+- **Database**: SQLite stored in `/tmp` (resets on cold start - use Turso/PlanetScale for production)
+
 ## Features
 
 - Track multiple e-commerce sites (AliExpress, Etsy, Shopify, Generic)
@@ -10,30 +37,7 @@ Track competitor e-commerce websites - monitor products, pricing, and estimate r
 - Price history charts
 - Site comparison dashboard
 
-## Tech Stack
-
-- **Backend**: Python, FastAPI, SQLAlchemy, BeautifulSoup
-- **Frontend**: Next.js, TypeScript, Tailwind CSS, Recharts
-- **Database**: SQLite (default) or PostgreSQL
-
-## Setup
-
-### Backend
-
-```bash
-cd backend
-pip install -r requirements.txt
-
-# Create .env file
-cp .env.example .env
-
-# Start the API
-python main.py
-```
-
-API runs at `http://localhost:8000`
-
-### Frontend
+## Local Development
 
 ```bash
 cd frontend
@@ -41,29 +45,21 @@ npm install
 npm run dev
 ```
 
-Dashboard runs at `http://localhost:3000`
-
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/sites` | Add a site to track |
 | GET | `/api/sites` | List all tracked sites |
-| DELETE | `/api/sites/{id}` | Remove a site |
-| POST | `/api/sites/{id}/scrape` | Trigger a scrape |
-| GET | `/api/sites/{id}` | Get site analytics |
-| GET | `/api/sites/{id}/products` | Get product list |
-| GET | `/api/compare?site_ids=1,2,3` | Compare multiple sites |
-
-## How Revenue Estimation Works
-
-1. **Direct sales data**: If the site shows "X sold", use that × price
-2. **Review-based**: Reviews / 0.05 (5% review rate) × price
-3. **Stock changes**: Track inventory changes over time as sales velocity
+| DELETE | `/api/sites/[id]` | Remove a site |
+| POST | `/api/sites/[id]/scrape` | Trigger a scrape |
+| GET | `/api/sites/[id]` | Get site analytics |
+| GET | `/api/sites/[id]/products` | Get product list |
+| GET | `/api/compare?site_ids=1,2` | Compare sites |
 
 ## Important Notes
 
 - Revenue estimates are approximations, not exact figures
-- Scraping frequency should be reasonable (once daily recommended)
-- Some sites may block automated requests - use proxy rotation in production
-- Always respect robots.txt and terms of service
+- Some sites may block scrapers (use proxies in production)
+- SQLite in `/tmp` resets on cold starts - data won't persist across deployments
+- For production, swap to Turso (free SQLite hosting) or PlanetScale
