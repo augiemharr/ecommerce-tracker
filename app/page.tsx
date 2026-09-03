@@ -235,6 +235,8 @@ export default function Dashboard() {
           </div>
         )}
 
+        <CategoryAnalysis products={data?.products || []} soldItems={data?.sold_items || []} fmt={fmt} />
+
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
             <div className="flex gap-2">
@@ -356,6 +358,68 @@ function StatCard({ icon, label, value, color = 'default' }: {
       <div className={`text-xl font-bold ${
         color === 'green' ? 'text-green-400' : color === 'red' ? 'text-red-400' : ''
       }`}>{value}</div>
+    </div>
+  );
+}
+
+function categorize(name: string): string {
+  const lower = name.toLowerCase();
+  if (/jacket|coat|outer|hoodie|blazer/.test(lower)) return 'Jackets';
+  if (/jeans|pants|trousers|legging|shorts|skirt|bootcut|lowrise/.test(lower)) return 'Bottoms';
+  if (/dress|gown|romper|jumpsuit/.test(lower)) return 'Dresses';
+  if (/bag|purse|tote|clutch|backpack/.test(lower)) return 'Bags';
+  if (/necklace|earring|bracelet|ring|jewelry|chain/.test(lower)) return 'Jewelry';
+  if (/hat|cap|beanie|headband/.test(lower)) return 'Accessories';
+  if (/top|tee|shirt|tank|blouse|crop|bodysuit|sweater|cardigan|polo/.test(lower)) return 'Tops';
+  return 'Other';
+}
+
+function CategoryAnalysis({ products, soldItems, fmt }: { products: any[]; soldItems: any[]; fmt: (n: number) => string }) {
+  const stats = new Map<string, { count: number; revenue: number; sold: number; soldRevenue: number }>();
+
+  for (const p of products) {
+    const cat = categorize(p.name);
+    const s = stats.get(cat) || { count: 0, revenue: 0, sold: 0, soldRevenue: 0 };
+    s.count++;
+    s.revenue += p.price;
+    stats.set(cat, s);
+  }
+
+  for (const item of soldItems) {
+    const cat = categorize(item.name);
+    const s = stats.get(cat) || { count: 0, revenue: 0, sold: 0, soldRevenue: 0 };
+    s.sold++;
+    s.soldRevenue += item.price;
+    stats.set(cat, s);
+  }
+
+  const categories = Array.from(stats.entries())
+    .map(([name, s]) => ({ name, ...s }))
+    .sort((a, b) => b.sold - a.sold);
+
+  const maxSold = Math.max(...categories.map((c) => c.sold), 1);
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <h2 className="text-sm font-semibold text-gray-400 mb-4">Best Selling Categories</h2>
+      <div className="space-y-3">
+        {categories.map((cat) => (
+          <div key={cat.name} className="flex items-center gap-4">
+            <div className="w-24 text-sm font-medium text-gray-300 truncate">{cat.name}</div>
+            <div className="flex-1 h-6 bg-gray-800 rounded overflow-hidden">
+              <div
+                className="h-full bg-blue-600 rounded"
+                style={{ width: `${(cat.sold / maxSold) * 100}%` }}
+              />
+            </div>
+            <div className="w-16 text-right text-sm text-gray-400">{cat.sold} sold</div>
+            <div className="w-28 text-right text-sm text-green-400 font-medium">{fmt(cat.soldRevenue)}</div>
+          </div>
+        ))}
+        {categories.length === 0 && (
+          <div className="text-center py-6 text-gray-500">No data yet</div>
+        )}
+      </div>
     </div>
   );
 }
