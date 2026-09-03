@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getShopData } from '@/lib/db';
 import { getProjections, saveProjections, ProjectionData, ProductProjection } from '@/lib/projections';
-import { SCRAPERS, ALL_SOURCES } from '@/lib/scrapers';
+import { scrapeEbay, scrapeDepop, scrapePoshmark, scrapeMercari, scrapeVinted, scrapeThredUp, scrapeEtsy, scrapeAmazon, scrapeTradeMe } from '@/lib/scrapers';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -17,29 +17,33 @@ function median(values: number[]): number {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-async function projectProduct(product: { id: string; name: string; price: number }): Promise<ProductProjection> {
-  const allCompetitors: Awaited<ReturnType<typeof SCRAPERS[string]>>[number][] = [];
-  const sourcesSearched: string[] = [];
-  const sourcesFailed: string[] = [];
+const FAST_SCRAPERS: Array<{ name: string; fn: (q: string) => Promise<any[]>; type: string }> = [
+  { name: 'ebay', fn: scrapeEbay, type: 'resale' },
+  { name: 'depop', fn: scrapeDepop, type: 'resale' },
+  { name: 'poshmark', fn: scrapePoshmark, type: 'resale' },
+  { name: 'etsy', fn: scrapeEtsy, type: 'new_marketplace' },
+  { name: 'amazon', fn: scrapeAmazon, type: 'new_marketplace' },
+  { name: 'trademe', fn: scrapeTradeMe, type: 'local' },
+];
 
-  for (const source of ALL_SOURCES) {
+async function projectProduct(product: { id: string; name: string; price: number }): Promise<ProductProjection> {
+  const allCompetitors: any[] = [];
+
+  for (const scraper of FAST_SCRAPERS) {
     try {
-      const scraper = SCRAPERS[source];
-      const results = await scraper(product.name);
-      if (results.length > 0) {
-        allCompetitors.push(...results);
-        sourcesSearched.push(source);
-      } else {
-        sourcesFailed.push(source);
-      }
-      await delay(1500 + Math.random() * 1500);
+      const results = await Promise.race([
+        scraper.fn(product.name),
+        new Promise<any[]>((_, rej) => setTimeout(() => rej(new Error('timeout')), 8000)),
+      ]);
+      allCompetitors.push(...results.map((r: any) => ({ ...r, source: scraper.name, source_type: scraper.type })));
+      await delay(500);
     } catch {
-      sourcesFailed.push(source);
+      // skip failed source
     }
   }
 
   const resaleCompetitors = allCompetitors.filter((c) => c.source_type === 'resale');
-  const newItemCompetitors = allCompetitors.filter((c) => c.source_type === 'new_marketplace');
+  const newItemCompetitors = allCompetitors.filter((c) => c.source_type === 'new_marketplace' || c.source_type === 'local');
 
   const avgMarketPrice = allCompetitors.length > 0
     ? allCompetitors.reduce((s, c) => s + c.total_cost, 0) / allCompetitors.length
@@ -70,6 +74,8 @@ async function projectProduct(product: { id: string; name: string; price: number
     ? ((product.price - avgMarketPrice) / avgMarketPrice) * 100
     : 0;
 
+  const sourcesFound = new Set(allCompetitors.map((c) => c.source)).size;
+
   return {
     product_id: product.id,
     product_name: product.name,
@@ -85,7 +91,7 @@ async function projectProduct(product: { id: string; name: string; price: number
     resale_price_position: resalePricePosition,
     potential_margin_pct: potentialMarginPct,
     market_range: { min: minPrice, max: maxPrice, median: medianPrice },
-    sources_found: sourcesSearched.length,
+    sources_found: sourcesFound,
     resale_sources_found: resaleCompetitors.length,
   };
 }
@@ -116,20 +122,22 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No products found' }, { status: 400 });
     }
 
-    const products = productIds
+    const allProducts = productIds
       ? shopData.products.filter((p) => productIds.includes(p.id))
       : shopData.products;
 
-    const projections: ProductProjection[] = [];
-    const batchSize = 3;
+    // Limit to 30 products for Vercel timeout
+    const products = allProducts.slice(0, 30);
 
-    for (let i = 0; i < products.length; i += batchSize) {
-      const batch = products.slice(i, i + batchSize);
+    const projections: ProductProjection[] = [];
+
+    // Process 3 at a time
+    for (let i = 0; i < products.length; i += 3) {
+      const batch = products.slice(i, i + 3);
       const results = await Promise.all(batch.map(projectProduct));
       projections.push(...results);
     }
 
-    const allPrices = projections.map((p) => p.missanne_price);
     const allMarketPrices = projections.filter((p) => p.avg_market_price > 0).map((p) => p.avg_market_price);
     const allResalePrices = projections.filter((p) => p.avg_resale_price > 0).map((p) => p.avg_resale_price);
 
@@ -140,9 +148,9 @@ export async function POST(request: Request) {
     const sortedByMargin = [...projections].sort((a, b) => a.potential_margin_pct - b.potential_margin_pct);
 
     const summary = {
-      avg_missanne_price: allPrices.reduce((s, p) => s + p, 0) / allPrices.length || 0,
-      avg_market_price: allMarketPrices.reduce((s, p) => s + p, 0) / allMarketPrices.length || 0,
-      avg_resale_price: allResalePrices.reduce((s, p) => s + p, 0) / allResalePrices.length || 0,
+      avg_missanne_price: projections.reduce((s, p) => s + p.missanne_price, 0) / projections.length || 0,
+      avg_market_price: allMarketPrices.reduce((s, p) => s + p, 0) / (allMarketPrices.length || 1),
+      avg_resale_price: allResalePrices.reduce((s, p) => s + p, 0) / (allResalePrices.length || 1),
       items_below_market: itemsBelowMarket,
       items_above_market: itemsAboveMarket,
       items_competitive_in_resale: itemsCompetitiveResale,
@@ -152,7 +160,7 @@ export async function POST(request: Request) {
 
     const projectionData: ProjectionData = {
       generated_at: new Date().toISOString(),
-      total_sources_searched: ALL_SOURCES.length,
+      total_sources_searched: FAST_SCRAPERS.length,
       products: projections,
       summary,
     };
