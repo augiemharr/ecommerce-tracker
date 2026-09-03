@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, Package, DollarSign, ExternalLink, TrendingUp, ShoppingCart } from 'lucide-react';
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell,
 } from 'recharts';
 
 interface Product {
@@ -60,6 +60,13 @@ export default function Dashboard() {
 
   useEffect(() => { loadData(); }, []);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!scraping) handleScrape();
+    }, 300000);
+    return () => clearInterval(interval);
+  }, [scraping]);
+
   async function loadData() {
     try {
       const res = await fetch('/api/shop');
@@ -114,12 +121,21 @@ export default function Dashboard() {
       byDay.set(day, arr);
     }
     return Array.from(byDay.entries()).map(([day, entries]) => {
-      const last = entries[entries.length - 1];
+      const revenues = entries.map((e) => e.sold_revenue_this_scrape || 0);
+      const open = entries[0].revenue;
+      const close = entries[entries.length - 1].revenue;
+      const high = Math.max(...revenues);
+      const low = Math.min(...revenues);
       return {
         date: day,
-        revenue: last.revenue,
-        cumulative_sold: last.cumulative_sold,
-        product_count: last.product_count,
+        open,
+        high,
+        low,
+        close,
+        body: Math.abs(close - open),
+        revenue: entries[entries.length - 1].revenue,
+        cumulative_sold: entries[entries.length - 1].cumulative_sold,
+        product_count: entries[entries.length - 1].product_count,
         sold_this_scrape: entries.reduce((s, e) => s + (e.sold_this_scrape || 0), 0),
         new_this_scrape: entries.reduce((s, e) => s + (e.new_this_scrape || 0), 0),
         sold_revenue_this_scrape: entries.reduce((s, e) => s + (e.sold_revenue_this_scrape || 0), 0),
@@ -181,25 +197,37 @@ export default function Dashboard() {
         {chartData.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-              <h2 className="text-sm font-semibold text-gray-400 mb-4">Cumulative Revenue</h2>
+              <h2 className="text-sm font-semibold text-gray-400 mb-4">Revenue Per Day (Candlestick)</h2>
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs>
-                      <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
+                  <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
                     <XAxis dataKey="date" stroke="#6b7280" tick={{ fontSize: 11 }} />
                     <YAxis stroke="#6b7280" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtShort(v)} />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
-                      formatter={(val: number) => [fmt(val), 'Revenue']}
+                      formatter={(val: number, name: string) => {
+                        if (name === 'body') return [fmt(val), 'Revenue Range'];
+                        return [fmt(val), name];
+                      }}
                     />
-                    <Area type="monotone" dataKey="revenue" stroke="#22c55e" fillOpacity={1} fill="url(#colorRev)" strokeWidth={2} />
-                  </AreaChart>
+                    <Bar dataKey="body" shape={(props: any) => {
+                      const { x, y, width, height, payload } = props;
+                      const isUp = payload.close >= payload.open;
+                      const color = isUp ? '#22c55e' : '#ef4444';
+                      const bodyTop = Math.max(payload.open, payload.close);
+                      const bodyBottom = Math.min(payload.open, payload.close);
+                      const yScale = height / (payload.high - payload.low || 1);
+                      const bodyY = y + (payload.high - bodyTop) * yScale;
+                      const bodyH = Math.max((bodyTop - bodyBottom) * yScale, 2);
+                      return (
+                        <g>
+                          <line x1={x + width / 2} y1={y} x2={x + width / 2} y2={y + height} stroke={color} strokeWidth={1} />
+                          <rect x={x + 2} y={bodyY} width={width - 4} height={bodyH} fill={color} rx={1} />
+                        </g>
+                      );
+                    }} />
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
