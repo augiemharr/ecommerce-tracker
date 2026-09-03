@@ -376,10 +376,6 @@ function categorize(name: string): string {
   const lower = name.toLowerCase();
   if (/jacket|coat|outer|hoodie|blazer/.test(lower)) return 'Jackets';
   if (/jeans|pants|trousers|legging|shorts|skirt|bootcut|lowrise/.test(lower)) return 'Bottoms';
-  if (/dress|gown|romper|jumpsuit/.test(lower)) return 'Dresses';
-  if (/bag|purse|tote|clutch|backpack/.test(lower)) return 'Bags';
-  if (/necklace|earring|bracelet|ring|jewelry|chain/.test(lower)) return 'Jewelry';
-  if (/hat|cap|beanie|headband/.test(lower)) return 'Accessories';
   if (/top|tee|shirt|tank|blouse|crop|bodysuit|sweater|cardigan|polo/.test(lower)) return 'Tops';
   return 'Other';
 }
@@ -436,12 +432,11 @@ function CategoryAnalysis({ products, soldItems, fmt }: { products: any[]; soldI
 
 function PriceRangeAnalysis({ soldItems, products, fmt }: { soldItems: any[]; products: any[]; fmt: (n: number) => string }) {
   const ranges = [
-    { label: '$0-20', min: 0, max: 20 },
-    { label: '$20-40', min: 20, max: 40 },
-    { label: '$40-60', min: 40, max: 60 },
-    { label: '$60-80', min: 60, max: 80 },
-    { label: '$80-100', min: 80, max: 100 },
-    { label: '$100+', min: 100, max: Infinity },
+    { label: 'Under $30', min: 0, max: 30 },
+    { label: '$30-50', min: 30, max: 50 },
+    { label: '$50-70', min: 50, max: 70 },
+    { label: '$70-100', min: 70, max: 100 },
+    { label: 'Over $100', min: 100, max: Infinity },
   ];
 
   const stats = ranges.map((r) => {
