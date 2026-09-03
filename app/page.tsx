@@ -169,24 +169,24 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <header className="border-b border-gray-800 p-6">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <header className="border-b border-gray-800 p-4 sm:p-6">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold">Miss Anne Shop Tracker</h1>
+            <h1 className="text-xl sm:text-2xl font-bold">Miss Anne Shop Tracker</h1>
             <a href="https://missanneshop.com" target="_blank" rel="noopener noreferrer"
               className="text-blue-400 text-sm flex items-center gap-1 hover:underline mt-1">
               missanneshop.com <ExternalLink size={12} />
             </a>
           </div>
           <button onClick={handleScrape} disabled={scraping}
-            className="bg-blue-600 hover:bg-blue-700 px-5 py-2.5 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 font-medium">
-            <RefreshCw size={18} className={scraping ? 'animate-spin' : ''} />
+            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 font-medium text-sm sm:text-base">
+            <RefreshCw size={16} className={scraping ? 'animate-spin' : ''} />
             {scraping ? 'Scraping...' : 'Scrape Now'}
           </button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto p-6 space-y-6">
+      <main className="max-w-7xl mx-auto p-4 sm:p-6 space-y-6">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard icon={<Package size={20} />} label="Products" value={data?.total_products?.toLocaleString() || '0'} />
           <StatCard icon={<ShoppingCart size={20} />} label="Sold" value={String(data?.sold_items?.length || 0)} color="red" />
@@ -247,33 +247,33 @@ export default function Dashboard() {
           <RevenueTrend revenueHistory={data?.revenue_history || []} fmt={fmt} />
         </div>
 
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {([
                 { key: 'products', label: 'Products', count: filteredProducts.length },
                 { key: 'sold', label: 'Sold', count: filteredSold.length },
                 { key: 'new', label: 'New', count: filteredNew.length },
               ] as const).map((t) => (
                 <button key={t.key} onClick={() => setTab(t.key)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     tab === t.key ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
                   }`}>
                   {t.label} ({t.count})
                 </button>
               ))}
             </div>
-            <div className="flex gap-3 flex-wrap">
+            <div className="flex gap-2 sm:gap-3 flex-wrap w-full sm:w-auto">
               <div className="flex bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
                 {(['NZD', 'USD', 'PHP'] as const).map((c) => (
                   <button key={c} onClick={() => setCurrency(c)}
-                    className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={`px-2 sm:px-3 py-1.5 text-sm font-medium transition-colors ${
                       currency === c ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'
                     }`}>{c}</button>
                 ))}
               </div>
               <input type="text" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)}
-                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-blue-500" />
+                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm flex-1 sm:w-48 focus:outline-none focus:border-blue-500" />
               {tab === 'products' && (
                 <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}
                   className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm">
@@ -406,20 +406,24 @@ function CategoryAnalysis({ products, soldItems, fmt }: { products: any[]; soldI
   const maxSold = Math.max(...categories.map((c) => c.sold), 1);
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
       <h2 className="text-sm font-semibold text-gray-400 mb-4">Best Selling Categories</h2>
       <div className="space-y-3">
         {categories.map((cat) => (
-          <div key={cat.name} className="flex items-center gap-4">
-            <div className="w-24 text-sm font-medium text-gray-300 truncate">{cat.name}</div>
-            <div className="flex-1 h-6 bg-gray-800 rounded overflow-hidden">
-              <div
-                className="h-full bg-blue-600 rounded"
-                style={{ width: `${(cat.sold / maxSold) * 100}%` }}
-              />
+          <div key={cat.name} className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
+              <div className="w-20 sm:w-24 text-sm font-medium text-gray-300 truncate">{cat.name}</div>
+              <div className="flex-1 h-6 bg-gray-800 rounded overflow-hidden">
+                <div
+                  className="h-full bg-blue-600 rounded"
+                  style={{ width: `${(cat.sold / maxSold) * 100}%` }}
+                />
+              </div>
             </div>
-            <div className="w-16 text-right text-sm text-gray-400">{cat.sold} sold</div>
-            <div className="w-28 text-right text-sm text-green-400 font-medium">{fmt(cat.soldRevenue)}</div>
+            <div className="flex items-center gap-4 pl-24 sm:pl-0">
+              <div className="w-16 text-right text-sm text-gray-400">{cat.sold} sold</div>
+              <div className="w-24 sm:w-28 text-right text-sm text-green-400 font-medium">{fmt(cat.soldRevenue)}</div>
+            </div>
           </div>
         ))}
         {categories.length === 0 && (
@@ -450,14 +454,14 @@ function PriceRangeAnalysis({ soldItems, products, fmt }: { soldItems: any[]; pr
   const maxCount = Math.max(...stats.map((s) => Math.max(s.inStock, s.soldCount)), 1);
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
       <h2 className="text-sm font-semibold text-gray-400 mb-4">Price Range Performance</h2>
       <div className="space-y-3">
         {stats.map((s) => (
           <div key={s.label}>
             <div className="flex items-center justify-between mb-1">
               <span className="text-sm text-gray-300">{s.label}</span>
-              <span className="text-xs text-gray-500">{s.soldCount} sold / {s.inStock} in stock</span>
+              <span className="text-xs text-gray-500">{s.soldCount} sold / {s.inStock} stock</span>
             </div>
             <div className="flex gap-1 h-4">
               <div className="bg-blue-600 rounded-l" style={{ width: `${(s.inStock / maxCount) * 100}%` }} />
@@ -502,20 +506,20 @@ function TimeToSellAnalysis({ soldItems, fmt }: { soldItems: any[]; fmt: (n: num
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
       <h2 className="text-sm font-semibold text-gray-400 mb-4">Time to Sell</h2>
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
         <div className="text-center">
           <div className="text-xs text-gray-500 mb-1">Avg</div>
-          <div className="text-lg font-bold text-white">{formatTime(avgHours)}</div>
+          <div className="text-base sm:text-lg font-bold text-white">{formatTime(avgHours)}</div>
         </div>
         <div className="text-center">
           <div className="text-xs text-gray-500 mb-1">Fastest</div>
-          <div className="text-lg font-bold text-green-400">{formatTime(fastest.hours)}</div>
+          <div className="text-base sm:text-lg font-bold text-green-400">{formatTime(fastest.hours)}</div>
         </div>
         <div className="text-center">
           <div className="text-xs text-gray-500 mb-1">Slowest</div>
-          <div className="text-lg font-bold text-red-400">{formatTime(slowest.hours)}</div>
+          <div className="text-base sm:text-lg font-bold text-red-400">{formatTime(slowest.hours)}</div>
         </div>
       </div>
       <div className="text-xs text-gray-500 text-center">{soldItems.length} items tracked</div>
@@ -537,7 +541,7 @@ function NewVsOldPerformance({ soldItems, newItems, products, fmt }: { soldItems
   const olderRate = olderNew.length > 0 ? (olderSold.length / olderNew.length * 100) : 0;
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
       <h2 className="text-sm font-semibold text-gray-400 mb-4">New vs Old Performance</h2>
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -593,7 +597,7 @@ function RevenueTrend({ revenueHistory, fmt }: { revenueHistory: any[]; fmt: (n:
   const maxRev = Math.max(...revenues, 1);
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
       <h2 className="text-sm font-semibold text-gray-400 mb-4">Revenue Trend</h2>
       <div className="flex items-end gap-1 h-24 mb-2">
         {days.map((d, i) => (
