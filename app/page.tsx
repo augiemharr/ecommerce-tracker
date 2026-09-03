@@ -224,7 +224,6 @@ export default function Dashboard() {
                     <YAxis stroke="#6b7280" tick={{ fontSize: 11 }} />
                     <Tooltip
                       contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
-                      formatter={(val: number, name: string) => [val, name === 'sold_this_scrape' ? 'Sold' : 'New']}
                     />
                     <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
                     <Bar dataKey="sold_this_scrape" name="Sold" fill="#ef4444" radius={[3, 3, 0, 0]} />
