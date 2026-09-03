@@ -8,10 +8,12 @@ export async function POST() {
   if (!data) return NextResponse.json({ error: 'No data found' });
 
   const targetDate = '8/26/2026';
+  const targetUTC = '2026-08-25';
   const before = data.revenue_history.length;
   data.revenue_history = data.revenue_history.filter((h) => {
-    const d = new Date(h.date).toLocaleDateString();
-    return d !== targetDate;
+    const localDate = new Date(h.date).toLocaleDateString();
+    const utcDate = h.date.slice(0, 10);
+    return localDate !== targetDate && utcDate !== targetUTC;
   });
   const removed = before - data.revenue_history.length;
 
