@@ -237,6 +237,16 @@ export default function Dashboard() {
 
         <CategoryAnalysis products={data?.products || []} soldItems={data?.sold_items || []} fmt={fmt} />
 
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <PriceRangeAnalysis soldItems={data?.sold_items || []} products={data?.products || []} fmt={fmt} />
+          <TimeToSellAnalysis soldItems={data?.sold_items || []} fmt={fmt} />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <NewVsOldPerformance soldItems={data?.sold_items || []} newItems={data?.new_items || []} products={data?.products || []} fmt={fmt} />
+          <RevenueTrend revenueHistory={data?.revenue_history || []} fmt={fmt} />
+        </div>
+
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
             <div className="flex gap-2">
@@ -419,6 +429,193 @@ function CategoryAnalysis({ products, soldItems, fmt }: { products: any[]; soldI
         {categories.length === 0 && (
           <div className="text-center py-6 text-gray-500">No data yet</div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function PriceRangeAnalysis({ soldItems, products, fmt }: { soldItems: any[]; products: any[]; fmt: (n: number) => string }) {
+  const ranges = [
+    { label: '$0-20', min: 0, max: 20 },
+    { label: '$20-40', min: 20, max: 40 },
+    { label: '$40-60', min: 40, max: 60 },
+    { label: '$60-80', min: 60, max: 80 },
+    { label: '$80-100', min: 80, max: 100 },
+    { label: '$100+', min: 100, max: Infinity },
+  ];
+
+  const stats = ranges.map((r) => {
+    const inStock = products.filter((p) => p.price >= r.min && p.price < r.max).length;
+    const sold = soldItems.filter((p) => p.price >= r.min && p.price < r.max);
+    const soldRevenue = sold.reduce((s, p) => s + p.price, 0);
+    return { ...r, inStock, soldCount: sold.length, soldRevenue };
+  });
+
+  const maxCount = Math.max(...stats.map((s) => Math.max(s.inStock, s.soldCount)), 1);
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <h2 className="text-sm font-semibold text-gray-400 mb-4">Price Range Performance</h2>
+      <div className="space-y-3">
+        {stats.map((s) => (
+          <div key={s.label}>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm text-gray-300">{s.label}</span>
+              <span className="text-xs text-gray-500">{s.soldCount} sold / {s.inStock} in stock</span>
+            </div>
+            <div className="flex gap-1 h-4">
+              <div className="bg-blue-600 rounded-l" style={{ width: `${(s.inStock / maxCount) * 100}%` }} />
+              <div className="bg-red-500 rounded-r" style={{ width: `${(s.soldCount / maxCount) * 100}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-4 mt-4 text-xs text-gray-500">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-blue-600 rounded" />In Stock</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 bg-red-500 rounded" />Sold</span>
+      </div>
+    </div>
+  );
+}
+
+function TimeToSellAnalysis({ soldItems, fmt }: { soldItems: any[]; fmt: (n: number) => string }) {
+  if (soldItems.length === 0) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <h2 className="text-sm font-semibold text-gray-400 mb-4">Time to Sell</h2>
+        <div className="text-center py-6 text-gray-500">No sold items yet</div>
+      </div>
+    );
+  }
+
+  const now = new Date();
+  const times = soldItems.map((item) => {
+    const detected = new Date(item.detected_at);
+    const hours = (now.getTime() - detected.getTime()) / (1000 * 60 * 60);
+    return { name: item.name, hours, price: item.price };
+  });
+
+  const avgHours = times.reduce((s, t) => s + t.hours, 0) / times.length;
+  const fastest = times.reduce((a, b) => (a.hours < b.hours ? a : b));
+  const slowest = times.reduce((a, b) => (a.hours > b.hours ? a : b));
+
+  const formatTime = (hours: number) => {
+    if (hours < 1) return `${Math.round(hours * 60)}m`;
+    if (hours < 24) return `${hours.toFixed(1)}h`;
+    return `${(hours / 24).toFixed(1)}d`;
+  };
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <h2 className="text-sm font-semibold text-gray-400 mb-4">Time to Sell</h2>
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="text-center">
+          <div className="text-xs text-gray-500 mb-1">Avg</div>
+          <div className="text-lg font-bold text-white">{formatTime(avgHours)}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-gray-500 mb-1">Fastest</div>
+          <div className="text-lg font-bold text-green-400">{formatTime(fastest.hours)}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-xs text-gray-500 mb-1">Slowest</div>
+          <div className="text-lg font-bold text-red-400">{formatTime(slowest.hours)}</div>
+        </div>
+      </div>
+      <div className="text-xs text-gray-500 text-center">{soldItems.length} items tracked</div>
+    </div>
+  );
+}
+
+function NewVsOldPerformance({ soldItems, newItems, products, fmt }: { soldItems: any[]; newItems: any[]; products: any[]; fmt: (n: number) => string }) {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  const recentNew = newItems.filter((n) => new Date(n.added_at) >= sevenDaysAgo);
+  const olderNew = newItems.filter((n) => new Date(n.added_at) < sevenDaysAgo);
+
+  const recentSold = soldItems.filter((s) => new Date(s.detected_at) >= sevenDaysAgo);
+  const olderSold = soldItems.filter((s) => new Date(s.detected_at) < sevenDaysAgo);
+
+  const recentRate = recentNew.length > 0 ? (recentSold.length / recentNew.length * 100) : 0;
+  const olderRate = olderNew.length > 0 ? (olderSold.length / olderNew.length * 100) : 0;
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <h2 className="text-sm font-semibold text-gray-400 mb-4">New vs Old Performance</h2>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm text-gray-300">Last 7 Days</div>
+            <div className="text-xs text-gray-500">{recentNew.length} new items</div>
+          </div>
+          <div className="text-right">
+            <div className="text-lg font-bold text-green-400">{recentSold.length} sold</div>
+            <div className="text-xs text-gray-500">{recentRate.toFixed(0)}% sell-through</div>
+          </div>
+        </div>
+        <div className="h-px bg-gray-800" />
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm text-gray-300">Older Items</div>
+            <div className="text-xs text-gray-500">{olderNew.length} items</div>
+          </div>
+          <div className="text-right">
+            <div className="text-lg font-bold text-blue-400">{olderSold.length} sold</div>
+            <div className="text-xs text-gray-500">{olderRate.toFixed(0)}% sell-through</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RevenueTrend({ revenueHistory, fmt }: { revenueHistory: any[]; fmt: (n: number) => string }) {
+  if (revenueHistory.length < 2) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+        <h2 className="text-sm font-semibold text-gray-400 mb-4">Revenue Trend</h2>
+        <div className="text-center py-6 text-gray-500">Need more data</div>
+      </div>
+    );
+  }
+
+  const byDay = new Map<string, number>();
+  for (const h of revenueHistory) {
+    const day = new Date(h.date).toLocaleDateString();
+    byDay.set(day, (byDay.get(day) || 0) + (h.sold_revenue_this_scrape || 0));
+  }
+
+  const days = Array.from(byDay.entries()).map(([date, revenue]) => ({ date, revenue }));
+  const revenues = days.map((d) => d.revenue);
+  const avg = revenues.reduce((s, r) => s + r, 0) / revenues.length;
+
+  const recentAvg = revenues.slice(-3).reduce((s, r) => s + r, 0) / Math.min(revenues.length, 3);
+  const olderAvg = revenues.slice(0, -3).reduce((s, r) => s + r, 0) / Math.max(revenues.length - 3, 1);
+  const trend = recentAvg > olderAvg ? 'up' : recentAvg < olderAvg ? 'down' : 'flat';
+
+  const maxRev = Math.max(...revenues, 1);
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
+      <h2 className="text-sm font-semibold text-gray-400 mb-4">Revenue Trend</h2>
+      <div className="flex items-end gap-1 h-24 mb-2">
+        {days.map((d, i) => (
+          <div key={i} className="flex-1 bg-blue-600 rounded-t" style={{ height: `${(d.revenue / maxRev) * 100}%` }} />
+        ))}
+      </div>
+      <div className="flex justify-between text-xs text-gray-500 mb-3">
+        <span>{days[0]?.date}</span>
+        <span>{days[days.length - 1]?.date}</span>
+      </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs text-gray-500">Daily Avg</div>
+          <div className="text-sm font-bold text-white">{fmt(avg)}</div>
+        </div>
+        <div className={`text-sm font-bold ${trend === 'up' ? 'text-green-400' : trend === 'down' ? 'text-red-400' : 'text-gray-400'}`}>
+          {trend === 'up' ? '↑ Trending Up' : trend === 'down' ? '↓ Trending Down' : '→ Flat'}
+        </div>
       </div>
     </div>
   );
