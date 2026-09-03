@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { RefreshCw, Package, DollarSign, ExternalLink, TrendingUp, ShoppingCart } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { RefreshCw, Package, DollarSign, ExternalLink, TrendingUp, ShoppingCart, TrendingDown, Minus, Copy, Download, Play, BarChart3 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
+  ScatterChart, Scatter, PieChart, Pie, Cell,
 } from 'recharts';
 
 interface Product {
@@ -46,6 +47,62 @@ interface ShopData {
   new_items: { name: string; price: number; added_at: string }[];
 }
 
+interface CompetitorItem {
+  source: string;
+  source_type: string;
+  item_name: string;
+  price: number;
+  currency: string;
+  url: string;
+  condition: string;
+  match_score: number;
+  seller_location: string;
+  shipping_cost: number;
+  total_cost: number;
+  listed_date: string;
+  sold_count: number;
+}
+
+interface ProductProjection {
+  product_id: string;
+  product_name: string;
+  category: string;
+  missanne_price: number;
+  competitors: CompetitorItem[];
+  resale_competitors: CompetitorItem[];
+  new_item_competitors: CompetitorItem[];
+  avg_market_price: number;
+  avg_resale_price: number;
+  avg_new_price: number;
+  price_position: 'below' | 'at' | 'above';
+  resale_price_position: 'below' | 'at' | 'above';
+  potential_margin_pct: number;
+  market_range: { min: number; max: number; median: number };
+  sources_found: number;
+  resale_sources_found: number;
+}
+
+interface ProjectionData {
+  generated_at: string;
+  total_sources_searched: number;
+  products: ProductProjection[];
+  summary: {
+    avg_missanne_price: number;
+    avg_market_price: number;
+    avg_resale_price: number;
+    items_below_market: number;
+    items_above_market: number;
+    items_competitive_in_resale: number;
+    top_competitive_items: string[];
+    top_overpriced_items: string[];
+  };
+}
+
+interface ProjectionNotes {
+  generated_analysis: string;
+  user_notes: string;
+}
+
 export default function Dashboard() {
   const [data, setData] = useState<ShopData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,12 +110,20 @@ export default function Dashboard() {
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<'price_desc' | 'price_asc' | 'name'>('price_desc');
   const [currency, setCurrency] = useState<'NZD' | 'USD' | 'PHP'>('NZD');
-  const [tab, setTab] = useState<'products' | 'sold' | 'new'>('products');
+  const [tab, setTab] = useState<'products' | 'sold' | 'new' | 'projections'>('products');
+  const [projections, setProjections] = useState<ProjectionData | null>(null);
+  const [projLoading, setProjLoading] = useState(false);
+  const [projProgress, setProjProgress] = useState('');
+  const [projNotes, setProjNotes] = useState<ProjectionNotes | null>(null);
+  const [projSearch, setProjSearch] = useState('');
+  const [projCategory, setProjCategory] = useState<string>('all');
+  const [projSort, setProjSort] = useState<'margin' | 'sources' | 'price_diff'>('margin');
+  const notesRef = useRef<HTMLTextAreaElement>(null);
 
   const rates = { NZD: 1, USD: 0.59, PHP: 33.2 };
   const symbols = { NZD: 'NZ$', USD: '$', PHP: '₱' };
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { loadData(); loadProjections(); }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -97,6 +162,70 @@ export default function Dashboard() {
     } finally {
       setScraping(false);
     }
+  }
+
+  async function loadProjections() {
+    try {
+      const res = await fetch('/api/shop/project-market', { method: 'POST' });
+      const json = await res.json();
+      if (!json.error) setProjections(json);
+    } catch {}
+    try {
+      const res = await fetch('/api/shop/analyze-market');
+      const json = await res.json();
+      if (json.generated_analysis) setProjNotes(json);
+    } catch {}
+  }
+
+  async function runMarketAnalysis() {
+    setProjLoading(true);
+    setProjProgress('Starting market analysis...');
+    try {
+      const res = await fetch('/api/shop/project-market', { method: 'POST' });
+      const json = await res.json();
+      if (json.error) {
+        alert(`Error: ${json.error}`);
+      } else {
+        setProjections(json);
+        setProjProgress('Generating analysis...');
+        const analysisRes = await fetch('/api/shop/analyze-market', { method: 'POST' });
+        const notes = await analysisRes.json();
+        if (notes.generated_analysis) setProjNotes(notes);
+      }
+    } catch {
+      alert('Market analysis failed');
+    } finally {
+      setProjLoading(false);
+      setProjProgress('');
+    }
+  }
+
+  async function saveUserNotes() {
+    if (!projNotes || !notesRef.current) return;
+    const updated = { ...projNotes, user_notes: notesRef.current.value };
+    setProjNotes(updated);
+    await fetch('/api/shop/analyze-market', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+  }
+
+  function copyAnalysis() {
+    if (projNotes?.generated_analysis) {
+      navigator.clipboard.writeText(projNotes.generated_analysis);
+    }
+  }
+
+  function exportAnalysis() {
+    if (!projNotes?.generated_analysis) return;
+    const blob = new Blob([projNotes.generated_analysis], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `missanne-market-analysis-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function fmt(nzd: number) {
@@ -254,6 +383,7 @@ export default function Dashboard() {
                 { key: 'products', label: 'Products', count: filteredProducts.length },
                 { key: 'sold', label: 'Sold', count: filteredSold.length },
                 { key: 'new', label: 'New', count: filteredNew.length },
+                { key: 'projections', label: 'Projections', count: projections?.products?.length || 0 },
               ] as const).map((t) => (
                 <button key={t.key} onClick={() => setTab(t.key)}
                   className={`px-3 sm:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -348,6 +478,27 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
+          )}
+
+          {tab === 'projections' && (
+            <ProjectionsTab
+              projections={projections}
+              projLoading={projLoading}
+              projProgress={projProgress}
+              projNotes={projNotes}
+              projSearch={projSearch}
+              setProjSearch={setProjSearch}
+              projCategory={projCategory}
+              setProjCategory={setProjCategory}
+              projSort={projSort}
+              setProjSort={setProjSort}
+              runMarketAnalysis={runMarketAnalysis}
+              copyAnalysis={copyAnalysis}
+              exportAnalysis={exportAnalysis}
+              saveUserNotes={saveUserNotes}
+              notesRef={notesRef}
+              fmt={fmt}
+            />
           )}
         </div>
       </main>
@@ -617,6 +768,319 @@ function RevenueTrend({ revenueHistory, fmt }: { revenueHistory: any[]; fmt: (n:
           {trend === 'up' ? '↑ Trending Up' : trend === 'down' ? '↓ Trending Down' : '→ Flat'}
         </div>
       </div>
+    </div>
+  );
+}
+
+const PIE_COLORS = ['#3b82f6', '#ef4444', '#22c55e', '#eab308', '#a855f7', '#ec4899', '#06b6d4', '#f97316', '#8b5cf6', '#14b8a6'];
+
+function ProjectionsTab({
+  projections, projLoading, projProgress, projNotes, projSearch, setProjSearch,
+  projCategory, setProjCategory, projSort, setProjSort, runMarketAnalysis,
+  copyAnalysis, exportAnalysis, saveUserNotes, notesRef, fmt,
+}: {
+  projections: ProjectionData | null;
+  projLoading: boolean;
+  projProgress: string;
+  projNotes: ProjectionNotes | null;
+  projSearch: string;
+  setProjSearch: (s: string) => void;
+  projCategory: string;
+  setProjCategory: (s: string) => void;
+  projSort: string;
+  setProjSort: (s: 'margin' | 'sources' | 'price_diff') => void;
+  runMarketAnalysis: () => void;
+  copyAnalysis: () => void;
+  exportAnalysis: () => void;
+  saveUserNotes: () => void;
+  notesRef: React.RefObject<HTMLTextAreaElement>;
+  fmt: (n: number) => string;
+}) {
+  const s = projections?.summary;
+  const lastProjected = projections?.generated_at
+    ? Math.floor((Date.now() - new Date(projections.generated_at).getTime()) / 3600000)
+    : null;
+
+  const filteredProjections = (projections?.products || [])
+    .filter((p) => projCategory === 'all' || p.category === projCategory)
+    .filter((p) => !projSearch || p.product_name.toLowerCase().includes(projSearch.toLowerCase()))
+    .sort((a, b) => {
+      if (projSort === 'margin') return b.potential_margin_pct - a.potential_margin_pct;
+      if (projSort === 'sources') return b.sources_found - a.sources_found;
+      return Math.abs(b.potential_margin_pct) - Math.abs(a.potential_margin_pct);
+    });
+
+  const categories = [...new Set(projections?.products.map((p) => p.category) || [])];
+
+  const scatterData = (projections?.products || []).map((p) => ({
+    x: p.sources_found,
+    y: p.avg_market_price > 0 ? ((p.missanne_price - p.avg_market_price) / p.avg_market_price) * 100 : 0,
+    name: p.product_name,
+    missanne: p.missanne_price,
+    market: p.avg_market_price,
+    z: p.competitors.length,
+  }));
+
+  const categoryData = categories.map((cat) => {
+    const items = (projections?.products || []).filter((p) => p.category === cat);
+    const missAnneAvg = items.reduce((s, p) => s + p.missanne_price, 0) / (items.length || 1);
+    const marketAvg = items.filter((p) => p.avg_market_price > 0).reduce((s, p) => s + p.avg_market_price, 0) / (items.filter((p) => p.avg_market_price > 0).length || 1);
+    const resaleAvg = items.filter((p) => p.avg_resale_price > 0).reduce((s, p) => s + p.avg_resale_price, 0) / (items.filter((p) => p.avg_resale_price > 0).length || 1);
+    return { category: cat, MissAnne: missAnneAvg, Market: marketAvg, Resale: resaleAvg };
+  });
+
+  const sourceCounts = new Map<string, number>();
+  for (const p of projections?.products || []) {
+    for (const c of p.competitors) {
+      sourceCounts.set(c.source, (sourceCounts.get(c.source) || 0) + 1);
+    }
+  }
+  const sourcePieData = Array.from(sourceCounts.entries()).map(([name, value]) => ({ name, value }));
+
+  const resaleVsNew = categories.map((cat) => {
+    const items = (projections?.products || []).filter((p) => p.category === cat);
+    const resaleAvg = items.filter((p) => p.avg_resale_price > 0).reduce((s, p) => s + p.avg_resale_price, 0) / (items.filter((p) => p.avg_resale_price > 0).length || 1);
+    const newAvg = items.filter((p) => p.avg_new_price > 0).reduce((s, p) => s + p.avg_new_price, 0) / (items.filter((p) => p.avg_new_price > 0).length || 1);
+    return { category: cat, Resale: resaleAvg, New: newAvg, Gap: newAvg - resaleAvg };
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-bold">Market Projections</h2>
+          {lastProjected !== null && (
+            <p className="text-xs text-gray-500">Last projected: {lastProjected}h ago</p>
+          )}
+        </div>
+        <button onClick={runMarketAnalysis} disabled={projLoading}
+          className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 font-medium text-sm">
+          <Play size={16} className={projLoading ? 'animate-spin' : ''} />
+          {projLoading ? projProgress || 'Analyzing...' : 'Run Market Analysis'}
+        </button>
+      </div>
+
+      {s && (
+        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+          <StatCard icon={<DollarSign size={18} />} label="Avg Market" value={fmt(s.avg_market_price)} />
+          <StatCard icon={<TrendingUp size={18} />} label="Avg Resale" value={fmt(s.avg_resale_price)} />
+          <StatCard icon={<TrendingDown size={18} />} label="Below Market" value={`${s.items_below_market}`} color="green" />
+          <StatCard icon={<TrendingUp size={18} />} label="Above Market" value={`${s.items_above_market}`} color="red" />
+          <StatCard icon={<BarChart3 size={18} />} label="Competitive" value={`${s.items_competitive_in_resale}`} />
+          <StatCard icon={<Package size={18} />} label="Sources" value={`${projections?.total_sources_searched || 0}`} />
+        </div>
+      )}
+
+      {scatterData.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
+            <h3 className="text-sm font-semibold text-gray-400 mb-4">Price Position vs Competitor Count</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 10, right: 10, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                  <XAxis type="number" dataKey="x" name="Sources" stroke="#6b7280" tick={{ fontSize: 11 }} label={{ value: 'Sources Found', position: 'bottom', fill: '#6b7280', fontSize: 10 }} />
+                  <YAxis type="number" dataKey="y" name="% vs Market" stroke="#6b7280" tick={{ fontSize: 11 }} tickFormatter={(v) => `${v.toFixed(0)}%`} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
+                    formatter={(val: number, name: string) => {
+                      if (name === '% vs Market') return [`${val.toFixed(1)}%`, name];
+                      return [val, name];
+                    }}
+                    labelFormatter={() => ''}
+                  />
+                  <Scatter data={scatterData} fill="#3b82f6">
+                    {scatterData.map((entry, i) => (
+                      <Cell key={i} fill={entry.y < -10 ? '#22c55e' : entry.y > 10 ? '#ef4444' : '#eab308'} />
+                    ))}
+                  </Scatter>
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="flex gap-4 mt-2 text-xs text-gray-500">
+              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded" />Below market</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-yellow-500 rounded" />At market</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-red-500 rounded" />Above market</span>
+            </div>
+          </div>
+
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
+            <h3 className="text-sm font-semibold text-gray-400 mb-4">Category Price Comparison</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={categoryData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                  <XAxis dataKey="category" stroke="#6b7280" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#6b7280" tick={{ fontSize: 11 }} tickFormatter={(v) => fmt(v)} />
+                  <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }} formatter={(val: number) => [fmt(val)]} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="MissAnne" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="Market" fill="#6b7280" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="Resale" fill="#22c55e" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {sourcePieData.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
+            <h3 className="text-sm font-semibold text-gray-400 mb-4">Source Breakdown</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={sourcePieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                    {sourcePieData.map((_, i) => (
+                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
+            <h3 className="text-sm font-semibold text-gray-400 mb-4">Resale vs New Price Gap</h3>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={resaleVsNew}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
+                  <XAxis dataKey="category" stroke="#6b7280" tick={{ fontSize: 11 }} />
+                  <YAxis stroke="#6b7280" tick={{ fontSize: 11 }} tickFormatter={(v) => fmt(v)} />
+                  <Tooltip contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }} formatter={(val: number) => [fmt(val)]} />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="Resale" fill="#22c55e" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="New" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-gray-400">Market Analysis</h3>
+          <div className="flex gap-2">
+            <button onClick={copyAnalysis} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded text-xs text-gray-300 flex items-center gap-1 transition-colors">
+              <Copy size={12} /> Copy
+            </button>
+            <button onClick={exportAnalysis} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded text-xs text-gray-300 flex items-center gap-1 transition-colors">
+              <Download size={12} /> Export
+            </button>
+          </div>
+        </div>
+        <div className="bg-gray-950 rounded-lg p-4 mb-4 max-h-96 overflow-y-auto">
+          <pre className="text-sm text-gray-300 whitespace-pre-wrap font-sans">{projNotes?.generated_analysis || 'Run market analysis to generate insights.'}</pre>
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">Your Notes</label>
+          <textarea
+            ref={notesRef}
+            defaultValue={projNotes?.user_notes || ''}
+            onBlur={saveUserNotes}
+            placeholder="Add your own notes and projections..."
+            className="w-full bg-gray-950 border border-gray-800 rounded-lg p-3 text-sm text-gray-300 h-32 resize-none focus:outline-none focus:border-blue-500"
+          />
+        </div>
+      </div>
+
+      {filteredProjections.length > 0 && (
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+            <h3 className="text-sm font-semibold text-gray-400">Product Market Cards</h3>
+            <div className="flex gap-2 flex-wrap">
+              <select value={projCategory} onChange={(e) => setProjCategory(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm">
+                <option value="all">All Categories</option>
+                {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select value={projSort} onChange={(e) => setProjSort(e.target.value as any)}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm">
+                <option value="margin">By Margin</option>
+                <option value="sources">By Sources</option>
+                <option value="price_diff">By Price Diff</option>
+              </select>
+              <input type="text" placeholder="Search products..." value={projSearch} onChange={(e) => setProjSearch(e.target.value)}
+                className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:border-blue-500" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filteredProjections.map((p) => (
+              <ProductMarketCard key={p.product_id} projection={p} fmt={fmt} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProductMarketCard({ projection: p, fmt }: { projection: ProductProjection; fmt: (n: number) => string }) {
+  const posColor = p.price_position === 'below' ? 'text-green-400' : p.price_position === 'above' ? 'text-red-400' : 'text-yellow-400';
+  const posIcon = p.price_position === 'below' ? <TrendingDown size={14} /> : p.price_position === 'above' ? <TrendingUp size={14} /> : <Minus size={14} />;
+  const range = p.market_range.max - p.market_range.min || 1;
+  const missannePos = p.missanne_price - p.market_range.min;
+
+  return (
+    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+      <div className="flex items-start justify-between mb-3">
+        <h4 className="font-medium text-sm text-white truncate flex-1 mr-2">{p.product_name}</h4>
+        <span className={`flex items-center gap-1 text-xs font-medium ${posColor}`}>
+          {posIcon} {p.price_position}
+        </span>
+      </div>
+
+      <div className="space-y-2 mb-3">
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-400">MissAnne</span>
+          <span className="text-white font-semibold">{fmt(p.missanne_price)}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-400">Market Avg</span>
+          <span className="text-gray-300">{p.avg_market_price > 0 ? fmt(p.avg_market_price) : '—'}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-400">Resale Avg</span>
+          <span className="text-green-400">{p.avg_resale_price > 0 ? fmt(p.avg_resale_price) : '—'}</span>
+        </div>
+      </div>
+
+      <div className="mb-3">
+        <div className="h-2 bg-gray-700 rounded-full overflow-hidden relative">
+          <div className="absolute h-full bg-gray-600 rounded-full" style={{ left: 0, width: '100%' }} />
+          {range > 0 && (
+            <div className="absolute h-full w-1 bg-white rounded-full" style={{ left: `${(missannePos / range) * 100}%` }} />
+          )}
+        </div>
+        <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+          <span>{fmt(p.market_range.min)}</span>
+          <span>{fmt(p.market_range.max)}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-gray-500">
+        <span>{p.competitors.length} competitors</span>
+        <span>{p.sources_found} sources</span>
+        <span className={p.potential_margin_pct > 0 ? 'text-red-400' : 'text-green-400'}>
+          {p.potential_margin_pct > 0 ? '+' : ''}{p.potential_margin_pct.toFixed(0)}%
+        </span>
+      </div>
+
+      {p.competitors.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-gray-700 space-y-1">
+          {p.competitors.slice(0, 3).map((c, i) => (
+            <a key={i} href={c.url} target="_blank" rel="noopener noreferrer"
+              className="flex items-center justify-between text-xs hover:bg-gray-700/50 rounded px-2 py-1 transition-colors">
+              <span className="text-gray-400 truncate flex-1 mr-2">{c.source}</span>
+              <span className="text-gray-300">{fmt(c.total_cost)}</span>
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
