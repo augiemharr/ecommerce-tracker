@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { RefreshCw, Package, DollarSign, ExternalLink, TrendingUp, ShoppingCart } from 'lucide-react';
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 
 interface Product {
@@ -199,36 +199,7 @@ export default function Dashboard() {
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
               <h2 className="text-sm font-semibold text-gray-400 mb-4">Revenue Per Day (Candlestick)</h2>
               <div className="h-56">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                    <XAxis dataKey="date" stroke="#6b7280" tick={{ fontSize: 11 }} />
-                    <YAxis stroke="#6b7280" tick={{ fontSize: 11 }} tickFormatter={(v) => fmtShort(v)} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
-                      formatter={(val: number, name: string) => {
-                        if (name === 'body') return [fmt(val), 'Revenue Range'];
-                        return [fmt(val), name];
-                      }}
-                    />
-                    <Bar dataKey="body" shape={(props: any) => {
-                      const { x, y, width, height, payload } = props;
-                      const isUp = payload.close >= payload.open;
-                      const color = isUp ? '#22c55e' : '#ef4444';
-                      const bodyTop = Math.max(payload.open, payload.close);
-                      const bodyBottom = Math.min(payload.open, payload.close);
-                      const yScale = height / (payload.high - payload.low || 1);
-                      const bodyY = y + (payload.high - bodyTop) * yScale;
-                      const bodyH = Math.max((bodyTop - bodyBottom) * yScale, 2);
-                      return (
-                        <g>
-                          <line x1={x + width / 2} y1={y} x2={x + width / 2} y2={y + height} stroke={color} strokeWidth={1} />
-                          <rect x={x + 2} y={bodyY} width={width - 4} height={bodyH} fill={color} rx={1} />
-                        </g>
-                      );
-                    }} />
-                  </BarChart>
-                </ResponsiveContainer>
+                <CandlestickChart data={chartData} fmt={fmt} fmtShort={fmtShort} />
               </div>
             </div>
 
@@ -376,5 +347,57 @@ function StatCard({ icon, label, value, color = 'default' }: {
         color === 'green' ? 'text-green-400' : color === 'red' ? 'text-red-400' : ''
       }`}>{value}</div>
     </div>
+  );
+}
+
+function CandlestickChart({ data, fmt, fmtShort }: { data: any[]; fmt: (n: number) => string; fmtShort: (n: number) => string }) {
+  if (data.length === 0) return null;
+
+  const padding = { top: 10, right: 10, bottom: 20, left: 50 };
+  const width = 400;
+  const height = 200;
+  const chartW = width - padding.left - padding.right;
+  const chartH = height - padding.top - padding.bottom;
+
+  const allVals = data.flatMap((d) => [d.high, d.low]);
+  const minVal = Math.min(...allVals);
+  const maxVal = Math.max(...allVals);
+  const range = maxVal - minVal || 1;
+  const yPad = range * 0.1;
+
+  const yScale = (v: number) => padding.top + chartH - ((v - (minVal - yPad)) / (range + yPad * 2)) * chartH;
+  const barW = Math.max((chartW / data.length) * 0.6, 4);
+  const gap = chartW / data.length;
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full">
+      {[0, 0.25, 0.5, 0.75, 1].map((pct) => {
+        const val = minVal - yPad + (range + yPad * 2) * pct;
+        const y = yScale(val);
+        return (
+          <g key={pct}>
+            <line x1={padding.left} y1={y} x2={width - padding.right} y2={y} stroke="#1f2937" strokeDasharray="3 3" />
+            <text x={padding.left - 5} y={y + 4} textAnchor="end" fill="#6b7280" fontSize={10}>{fmtShort(val)}</text>
+          </g>
+        );
+      })}
+      {data.map((entry, i) => {
+        const x = padding.left + gap * i + gap / 2;
+        const isUp = entry.close >= entry.open;
+        const color = isUp ? '#22c55e' : '#ef4444';
+        const wickTop = yScale(entry.high);
+        const wickBot = yScale(entry.low);
+        const bodyTop = yScale(Math.max(entry.open, entry.close));
+        const bodyBot = yScale(Math.min(entry.open, entry.close));
+        const bodyH = Math.max(bodyBot - bodyTop, 2);
+        return (
+          <g key={i}>
+            <line x1={x} y1={wickTop} x2={x} y2={wickBot} stroke={color} strokeWidth={1} />
+            <rect x={x - barW / 2} y={bodyTop} width={barW} height={bodyH} fill={color} rx={1} />
+            <text x={x} y={height - 5} textAnchor="middle" fill="#6b7280" fontSize={9}>{entry.date}</text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
