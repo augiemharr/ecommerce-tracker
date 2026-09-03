@@ -432,11 +432,12 @@ function CategoryAnalysis({ products, soldItems, fmt }: { products: any[]; soldI
 
 function PriceRangeAnalysis({ soldItems, products, fmt }: { soldItems: any[]; products: any[]; fmt: (n: number) => string }) {
   const ranges = [
-    { label: 'Under $30', min: 0, max: 30 },
-    { label: '$30-50', min: 30, max: 50 },
-    { label: '$50-70', min: 50, max: 70 },
-    { label: '$70-100', min: 70, max: 100 },
-    { label: 'Over $100', min: 100, max: Infinity },
+    { label: 'Under $20', min: 0, max: 19.99 },
+    { label: '$21-40', min: 20, max: 40 },
+    { label: '$41-60', min: 40.01, max: 60 },
+    { label: '$61-80', min: 60.01, max: 80 },
+    { label: '$81-100', min: 80.01, max: 100 },
+    { label: 'Over $100', min: 100.01, max: Infinity },
   ];
 
   const stats = ranges.map((r) => {
